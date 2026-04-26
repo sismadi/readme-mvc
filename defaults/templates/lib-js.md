@@ -1,3 +1,4 @@
+<- **Website:** [{social.website}] ( {social.website} DEBUG: social = ${JSON.stringify(social)} -->
 # {repo}
 
 {description}
