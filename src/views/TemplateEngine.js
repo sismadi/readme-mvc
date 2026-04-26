@@ -1,113 +1,105 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Fix: Dapatkan direktori asli dari file ini agar path relatif selalu benar
+// meskipun dipanggil dari folder lain
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const TOOL_ROOT = path.resolve(__dirname, '../..'); // Naik 2 level ke root readme-mvc
 
 export class TemplateEngine {
-  constructor(snippetsDir = './defaults/snippets') {
-    this.snippetsDir = snippetsDir;
-    this._snippetCache = new Map();
+  constructor(snippetsDir = null) {
+    // Gunakan path absolut ke folder defaults milik tool ini
+    this.defaultsDir = path.resolve(TOOL_ROOT, 'defaults');
+    this.snippetsDir = snippetsDir || path.join(this.defaultsDir, 'snippets');
+    this._cache = new Map();
   }
 
-  async resolvePath(type, name, localBase = './') {
-    const paths = [
-      path.resolve(localBase, `${type}s/${name}.md`),
-      path.resolve(process.cwd(), `defaults/${type}s/${name}.md`)
-    ];
+  async _resolve(type, name, localBase = './') {
+    // 1. Cek override lokal (di repo yang sedang di-generate)
+    const localPath = path.resolve(localBase, `${type}s/${name}.md`);
+    
+    // 2. Cek default bawaan tool (ini yang sebelumnya error)
+    const defaultPath = path.resolve(this.defaultsDir, `${type}s/${name}.md`);
 
-    for (const p of paths) {
+    // Coba akses file lokal dulu
+    try {
+      await fs.access(localPath);
+      return localPath;
+    } catch {
+      // Jika tidak ada, coba akses default tool
       try {
-        await fs.access(p);
-        return p;
+        await fs.access(defaultPath);
+        return defaultPath;
       } catch {
-        continue;
+        throw new Error(`${type} '${name}' not found in local or defaults`);
       }
     }
-    throw new Error(`${type} '${name}' not found in local or defaults`);
   }
 
   async loadSnippet(name, localBase = './') {
-    if (this._snippetCache.has(name)) {
-      return this._snippetCache.get(name);
-    }
+    if (this._cache.has(name)) return this._cache.get(name);
     
     try {
-      const snippetPath = await this.resolvePath('snippet', name, localBase);
-      let content = await fs.readFile(snippetPath, 'utf-8');
-      content = await this._injectPartials(content, localBase);
-      this._snippetCache.set(name, content);
-      return content;
-    } catch (error) {
-      return `<!-- Snippet '${name}' not found -->`;
+      const resolvedPath = await this._resolve('snippet', name, localBase);
+      let content = await fs.readFile(resolvedPath, 'utf-8');
+      
+      // Inject partials recursively
+      const processed = await this._injectPartials(content, localBase);
+      this._cache.set(name, processed);
+      return processed;
+    } catch (err) {
+      return `<!-- Snippet ${name} not found -->`;
     }
   }
 
   async _injectPartials(content, localBase) {
-    const partialRegex = /\{\{>\s*([\w-]+)\s*\}\}/g;
     let result = content;
+    // Regex untuk {{> snippet-name }}
+    const partialRegex = /\{\{>\s*([\w-]+)\s*\}\}/g;
     
     for (const match of content.matchAll(partialRegex)) {
-      const partial = await this.loadSnippet(match[1], localBase);
-      result = result.replace(match[0], partial);
+      const snippetName = match[1];
+      const snippetContent = await this.loadSnippet(snippetName, localBase);
+      result = result.replace(match[0], snippetContent);
     }
     return result;
   }
 
   async render(templateName, context, localBase = './') {
     try {
-      const templatePath = await this.resolvePath('template', templateName, localBase);
+      const templatePath = await this._resolve('template', templateName, localBase);
       let template = await fs.readFile(templatePath, 'utf-8');
       
-      // Inject snippets
-      let output = await this._injectPartials(template, localBase);
-      
-      // Variable substitution
-      output = output.replace(/\{([\w.]+)\}/g, (_, key) => {
-        const value = key.split('.').reduce((obj, k) => obj?.[k], context);
-        return value !== undefined ? this._escapeMarkdown(value) : `{${key}}`;
+      let out = await this._injectPartials(template, localBase);
+
+      // 1. Variable substitution {var}
+      out = out.replace(/\{([\w.]+)\}/g, (_, k) => {
+        const v = k.split('.').reduce((o, p) => o?.[p], context);
+        return v !== undefined ? String(v).replace(/[<>[\]]/g, '\\$&') : `{${k}}`;
       });
-      
-      // Process loops
-      output = this._processLoops(output, context);
-      
-      // Process conditionals
-      output = this._processConditionals(output, context);
-      
-      return output.trim();
-    } catch (error) {
-      throw new Error(`Failed to render template '${templateName}': ${error.message}`);
-    }
-  }
 
-  _processLoops(content, context) {
-    return content.replace(
-      /\{#each\s+([\w.]+)\}([\s\S]*?)\{\/each\}/g,
-      (_, listKey, block) => {
-        const list = listKey.split('.').reduce((obj, k) => obj?.[k], context) || [];
+      // 2. Loops {#each list}...{/each}
+      out = out.replace(/\{#each\s+([\w.]+)\}([\s\S]*?)\{\/each\}/g, (_, k, block) => {
+        const list = k.split('.').reduce((o, p) => o?.[p], context) || [];
         if (!Array.isArray(list)) return '';
-        
-        return list.map((item, idx) => 
+        return list.map((i, idx) => 
           block
-            .replace(/\{item\}/g, this._escapeMarkdown(item))
+            .replace(/\{item\}/g, typeof i === 'object' ? JSON.stringify(i) : i)
             .replace(/\{index\}/g, idx + 1)
-            .replace(/\{(\w+)\}/g, (_, prop) => 
-              typeof item === 'object' ? this._escapeMarkdown(item[prop]) : ''
-            )
         ).join('\n');
-      }
-    );
-  }
+      });
 
-  _processConditionals(content, context) {
-    return content.replace(
-      /\{#if\s+([\w.]+)\}([\s\S]*?)(?:\{#else\}([\s\S]*?))?\{\/if\}/g,
-      (_, conditionKey, ifBlock, elseBlock = '') => {
-        const value = conditionKey.split('.').reduce((obj, k) => obj?.[k], context);
-        return (value ? ifBlock : elseBlock).trim();
-      }
-    );
-  }
+      // 3. Conditionals {#if var}...{/if}
+      out = out.replace(/\{#if\s+([\w.]+)\}([\s\S]*?)(?:\{#else\}([\s\S]*?))?\{\/if\}/g, (_, k, ifB, elseB = '') => {
+        const v = k.split('.').reduce((o, p) => o?.[p], context);
+        return (v ? ifB : elseB).trim();
+      });
 
-  _escapeMarkdown(value) {
-    if (typeof value !== 'string') return String(value);
-    return value.replace(/[<>[\]]/g, '\\$&');
+      return out.trim();
+    } catch (err) {
+      throw new Error(`Render failed for '${templateName}': ${err.message}`);
+    }
   }
 }
