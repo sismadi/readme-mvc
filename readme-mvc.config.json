@@ -1,1 +1,15 @@
-{"template":"lms-lib","description":"Test repo","topics":["js"]}
+{
+  "template": "lms-lib",
+  "description": "🎓 Lightweight LMS framework untuk rendering modul pembelajaran",
+  "topics": ["javascript", "framework", "lms", "education"],
+  "features": [
+    "JSON-to-HTML rendering engine",
+    "Modul interaktif dengan event handling",
+    "Zero-dependency core",
+    "DonatSVG integration ready"
+  ],
+  "install": {
+    "npm": "donatjs-lms"
+  },
+  "license": "MIT"
+}
