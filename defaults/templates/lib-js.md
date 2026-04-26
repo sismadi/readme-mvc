@@ -32,13 +32,12 @@ import { repo } from '{repo}';
 {#if social.twitter}
 - **Twitter:** [{social.twitter}](https://twitter.com/{social.twitter})
 {/if}
-{#if social.Instagram}
-- **Instagram:** [{social.Instagram}](https://instagram.com/{social.Instagram})
+{#if social.instagram}
+- **Instagram:** [{social.instagram}](https://instagram.com/{social.instagram})
 {/if}
 {#if social.website}
 - **Website:** [{social.website}]({social.website})
 {/if}
-
 ## 📄 License
 
 {license} © {author.username}
