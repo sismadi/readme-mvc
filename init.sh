@@ -1,4 +1,3 @@
-cat > init.sh << 'SCRIPT_EOF'
 #!/usr/bin/env bash
 set -e
 
@@ -261,6 +260,3 @@ jobs:
 EOF
 
 echo "✅ Setup selesai! Struktur readme-mvc siap digunakan."
-SCRIPT_EOF
-
-chmod +x init.sh
