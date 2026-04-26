@@ -1,0 +1,30 @@
+{
+  "name": "@sismadi/readme-mvc",
+  "version": "1.0.0",
+  "description": "MVC-powered README generator for sismadi repositories",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "readme-mvc": "./bin/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./controllers": "./src/controllers/index.js"
+  },
+  "files": ["src/", "bin/", "defaults/", "README.md", "LICENSE"],
+  "scripts": {
+    "cli": "node bin/cli.js",
+    "test": "node --test src/**/*.test.js",
+    "prepublishOnly": "npm test"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "zod": "^3.22.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": ["readme", "generator", "mvc", "automation", "sismadi"],
+  "author": "sismadi",
+  "license": "MIT"
+}
